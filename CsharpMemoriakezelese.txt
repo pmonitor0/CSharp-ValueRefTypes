@@ -1,0 +1,107 @@
+A Visual Studio C# programok memóriaszervezése.
+
+Az itt leírtakhoz ismerni illik:
+  - A C# programban használt metódusok használatát
+  - Létre kell hozni tudni az alap struktúrák és osztályok alkalmazását
+  -A "HEX" számrendszer ismerete szükséges.
+
+A verem(stack) használata C# programokban:
+
+A verem a metódusok lokális változói, valamint a metódusok paramétereinek a tárolási helye a program memóriájában. Valamint a metódusok visszatérési címeit.
+A vermet úgy kell elképzelni, mint amikor tányérokat rakunk egymásra. Amit utolsónak teszünk a tányérok tetejére, azt tudjuk kivenni.
+A veremnek kettő regisztere van. Az ESP és az EBP. Az ESP mindig a verem tetejére mutat. A C# programokban egy metódus hívásoknál elmenti az ESP értékét az
+EBP regiszterbe. Innentől kezdve az EBP regiszter konstans. A vereben kizárólag érték típusok kapnak helyet. Az osztályok referenciája is érték típus!!!
+
+A HEAP használata/szerkezete:
+A Heap a dinamikus változók tárolási helye. Itt csak referencia típusok kapnak helyet(amik természetesen érték típusokból állnak).
+A Heap nélkül az OOP programozás nem létezne. Itt már nem sorrenden vannak a referencia típusok, hanem összevissza. VS C# progarmokban a Heap nem konstans
+része kivételével a GC felügyelete alá tartozik. C#-ban a referencia típusok elején 4(8) byte kap helyet. Ez azonosítja az adott referencia típust.
+Ez után következnek az adatmezők. Ezek szintén érték típusokból épülnek fel.
+
+Nézzünk egy viszonylagosan egyszerű C# kódot:
+
+using System.Drawing;
+
+namespace ValueVsReference
+{
+	class Program
+	{
+		[STAThread]
+		static int Main()
+		{
+			int integer= 0x30;
+			Point point = new Point(0X10, 0X20);
+			ClassPoint classPoint = new ClassPoint(0x11, 0x21);
+			Console.WriteLine("integer: {0}", integer);
+			Console.WriteLine("point.X: {0} point.Y: {1}", point.X, point.Y);
+			Console.WriteLine("classPoint.X: {0} classPoint.Y: {1}", classPoint.X, classPoint.Y);
+			return 0;
+		}
+	}
+
+	class ClassPoint
+	{
+		public int X;
+		public int Y;
+
+		public ClassPoint(int x, int y)
+		{ 
+			this.X = x;
+			this.Y = y;
+		}
+
+	}
+}
+
+A Debug|x86 platform beállítása után tegyünk egy breakpoint-ot az "int integer= 0x30;" sorába. Ezután elindítjuk az alkalmazást.
+A disassembly ablak megjelenítéséhez a Debug -> Windows -> Disassembly menüpontra ha rákattintunk, akkor megjelenik az ASM-kód. Azt tudni kell, hogy C# esetén csak olvasni tudjuk ezt. Módosítani nem. Tehát csak nézegelődünk
+a regiszterek és a memória világába. De nekünk ez is elég.
+A ASM-kód mutatja, hogy melyik C# utasítást hajtja végre a gép, ha a Step Over(F10) -es menüpontra nyomunk(vagy a billentyűt ütjük le).
+Ezen most mi soronként megyünk végig. A következő kódrészletet vizsgáljuk meg:
+
+			int integer= 0x30;
+04DB577B  mov         dword ptr [ebp-38h],30h
+
+Ez még ASM-ben is egysoros kód. A MOV asm utasítás azt mondja, hogy a vesssző utáni értéket mozgasd át a vessző előtti memóriacímre. Tehát a 30h értéket tedd a "dword ptr[ebp-38h]" memóriacímre. Itt tegyünk egy rövid kitérőt.
+dword ptr azt jelenti, hogy az azt követő memóriacím dword hosszú. Ez C#-ban az int. Ha most a registers ablakban megnézzük az EBP regiszter értékét(nálam 0073F04C). Ebből kell kivonni a 38h-t. Tehát a Memory 1 ablakba az address melletti
+szövegmezőbe beütjük a következőt: "0x0073F04C - 0x38" értéket, akkor az első byte-tól kezdve megjelenik a memória tartalma. A Disassembly ablakban nyomjunk F10-et. Ekkor végrehajtódik az asm utasítás.
+A Memory 1 ablakban megjelenik a "30 00 00 00" érték. vagyis a 00000030 érték, ami egyenlő 0x30 értékkel. Dehát ezt akartuk, nem? Nézzük a következő utasítást:
+
+			Point point = new Point(0X10, 0X20);
+04DB5782  push        20h  
+04DB5784  lea         ecx,[ebp-40h]  
+04DB5787  mov         edx,10h  
+04DB578C  call        dword ptr [CLRStub[MethodDescPrestub]@0B275110 (0B275110h)]
+
+Itt már látjuk, hogy nem egysoros az ASM kód. Itt először álljunk meg, és nézzük meg, hogy ez az ASM kód miket is csinál. A 20h a point.Y, míg a 10h a point.X értéke. A push azt jelenti, hogy nyomd le a verembe a következő értéket.
+A lea utasítás azt mondja, hogy tedd bele az ECX regiszterbe az EBP-40h memóriacímet. Ez a memóriacím egyenlő point lokális változó memóriacíme. A MOV utasítás arra utasítja a gépet, hogy 10h-étékett(point.X) tegye bele(mozgassa át) az EDX regiszterbe.
+A call egy függvényhívást jelent. Az F10-et nyomogatjuk addig, amíg a call utasításhoz nem érünk. Itt megvizsgálhatjuk, hogy igaz-e, amit eddig leírtam. Ha ezzel a vizsgálattal/ellenőrzéssel megvagyunk, akkor állítsuk a memory 1 ablak Address
+mezőjébe az ecx értékét(ne feledkezzünk meg arról, hogy "0x"-et kell tenni az ECX értéke elé). A Memory 1 ablakban láthatjuk a következőt:
+
+0x0073F00C  10 00 00 00 20 00 00 00
+
+A memóriacím biztos, hogy eltér az enyémtől, de nem ez a lényeg. Hanem az, hogy ezen acímen van a point memóriacíme, ami megegyezik a point.X memóriacímével. Utána pedig a point.Y értéke következik.
+
+Eddig csak érték típussal(struct) dolgoztunk. Itt az ideje megismerni, hogy hogy jön létre a referencia típus. Nézzük a következő kódsort:
+
+			ClassPoint classPoint = new ClassPoint(0x11, 0x21);
+04DB5792  mov         ecx,0AB497ACh  
+04DB5797  call        CORINFO_HELP_NEWSFAST (04AA300Ch)  
+04DB579C  mov         dword ptr [ebp-4Ch],eax  
+04DB579F  push        21h  
+04DB57A1  mov         ecx,dword ptr [ebp-4Ch]  
+04DB57A4  mov         edx,11h  
+04DB57A9  call        ValueVsReference.ClassPoint..ctor(Int32, Int32) (0B271128h)  
+04DB57AE  mov         eax,dword ptr [ebp-4Ch]  
+04DB57B1  mov         dword ptr [ebp-44h],eax
+
+Itt már minden utasítás ismerős. Az első call hívás foglalja le a megfelelő méretű memóriát a heap-ben. Míg a második call hívás a classPoint konstruktorát hívja. Majd az utolsó sorban eax értékét beleteszi a [ebp-44] memóriacímre
+vagyis a classPoint memóriacímére. Nyomkodjuk az F10-et az első call hívásig. Ha elértünk odáig, akkor nyomjuk le mégegyszer(tehát a nyil a MOV dword ptr [ebp-4Ch],eax sorra mutasson).
+Itt már lefutott a "CORINFO_HELP_NEWSFAST". Ez az eax-ban adta vissza a heab-ben lefoglalt memória kezdőcímét. Hasonlítsuk össze az EBP és az EAX regisztereket! Nálam az EBP=0073F04C, az EAX=051922E8.
+Láthatjuk, hogy az EAX értéke nagyságrenddel nagyobb, mint az EBP értéke. Így tudjuk "kapásból" megállapítani, hogy egy memóriacím a veremben, vagy a heap-ben van-e? Az EAX már a heap-ben turkál. Jegyezzük fel az EAX értékét!
+Nézzük meg az utolsó sort: "mov  dword ptr [ebp-44h],eax". Tehát az [EBP-44h] még a veremben van. Ez tartalmazza a classPoint kezdőcímét(a veremben!!!). Tehát ez a nagyon nagy eltérés az érték típustól.
+Most nyomogassuk az F10-et a második call hívásig(ez ugyebár a konstruktor). A Memory 1 ablakban üssük be a feljegyzett EAX értékére(ez nálam a 0x051922E8). Itt egyelőre még csak az első 4 byte tartalmaz értéket.
+Ez az általam csak azonosítónak, vagy object-nek nevezett érték.
+Nyomjunk F10-et. Most már lefutott a konstruktor. Itt már a sor kezdetétől a negyedik byte-al kezdődő int tartalmazza classPoint.X értékét, a következő int pedig a classPoint.Y értékét.
+Most még nyomjuk le kétszer az F10-et. Itt még navigálhatunk/nézegelődhetünk/kirándulhatunk a memóriában. Aztán lépjünk ki a programból.
+Mégegyszer vegyük át! Az "integer" és a "point" a veremben van. classPoint esetén a veremben csak a classPoint kezdőcíme van(mint azt láttuk, a heap-ben lévő címre mutat).
